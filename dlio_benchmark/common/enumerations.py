@@ -130,6 +130,7 @@ class FormatType(Enum):
     JPEG = 'jpeg'
     PNG = 'png'
     INDEXED_BINARY = 'indexed_binary'
+    INDEXED_BINARY_SMARTCACHE = 'indexed_binary_smartcache'
     MMAP_INDEXED_BINARY = 'mmap_indexed_binary'
     SYNTHETIC = 'synthetic'
     
@@ -156,6 +157,8 @@ class FormatType(Enum):
             return FormatType.PNG
         elif FormatType.INDEXED_BINARY.value == value:
             return FormatType.INDEXED_BINARY
+        elif FormatType.INDEXED_BINARY_SMARTCACHE.value == value:
+            return FormatType.INDEXED_BINARY_SMARTCACHE
         elif FormatType.MMAP_INDEXED_BINARY.value == value:
             return FormatType.MMAP_INDEXED_BINARY
         elif FormatType.SYNTHETIC.value == value:

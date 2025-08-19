@@ -14,10 +14,13 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 """
+import logging
+from dlio_benchmark.utils.utility import utcnow, DLIOMPI
 
 from dlio_benchmark.common.enumerations import FormatType
 from dlio_benchmark.common.error_code import ErrorCodes
 
+from dlio_benchmark.utils.config import ConfigArguments
 
 
 class GeneratorFactory(object):
@@ -26,6 +29,15 @@ class GeneratorFactory(object):
 
     @staticmethod
     def get_generator(type):
+
+        '''
+        _args = ConfigArguments.get_instance()
+        if _args.generator_class is not None:
+            if DLIOMPI.get_instance().rank() == 0:
+                self.logger.info(f"{utcnow()} Running DLIO with custom data generator class {_args.generator_class.__name__}")
+            return _args.generator_class()
+        '''
+    
         if type == FormatType.TFRECORD:
             from dlio_benchmark.data_generator.tf_generator import TFRecordGenerator
             return TFRecordGenerator()
@@ -53,5 +65,8 @@ class GeneratorFactory(object):
         elif type == FormatType.INDEXED_BINARY or type == FormatType.MMAP_INDEXED_BINARY:
             from dlio_benchmark.data_generator.indexed_binary_generator import IndexedBinaryGenerator
             return IndexedBinaryGenerator()
+        elif type == FormatType.INDEXED_BINARY_SMARTCACHE:
+            from dlio_benchmark.data_generator.indexed_binary_generator_smartcache import IndexedBinaryGeneratorSmartCache
+            return IndexedBinaryGeneratorSmartCache()
         else:
             raise Exception(str(ErrorCodes.EC1001))

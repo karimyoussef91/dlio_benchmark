@@ -361,3 +361,10 @@ def sleep(config):
     if sleep_time > 0.0:
         base_sleep(sleep_time)
     return sleep_time
+
+def get_first_subdirectory(path):
+    for entry in os.listdir(path):
+        full_path = os.path.join(path, entry)
+        if os.path.isdir(full_path):
+            return entry
+    return None  # No subdirectories found
