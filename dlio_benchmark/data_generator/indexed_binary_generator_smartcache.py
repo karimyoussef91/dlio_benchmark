@@ -29,6 +29,7 @@ import struct
 from mpi4py import MPI
 
 import os 
+import math
 
 # SmartCache
 import smartcache_py
@@ -42,6 +43,9 @@ Generator for creating data in NPZ format.
 class IndexedBinaryGeneratorSmartCache(DataGenerator):
     def __init__(self):
         super().__init__()
+        self.block_hash_size = 64
+        self.delimiter_size = 1
+        self.smartcache_mt_line_size = self.block_hash_size + self.delimiter_size
 
     def index_file_path_off(self, prefix_path):
         return prefix_path + '.off.idx'
@@ -68,6 +72,14 @@ class IndexedBinaryGeneratorSmartCache(DataGenerator):
             sample_size = dim1 * dim2
             total_size = sample_size * self.num_samples
             write_size = total_size
+
+            # SmartCache specific
+            chunk_size = chunk_size = int(os.getenv("SC_BLOCK_SIZE_BYTES", 2 * 1024 * 1024))  # Defaults to 2MB if not set
+            sample_num_blocks = math.ceil(sample_size / chunk_size)
+            total_num_blocks = math.ceil(total_size / chunk_size)
+            sample_smartcache_metadata_bytes = self.smartcache_mt_line_size * sample_num_blocks
+            total_smartcache_metadata_bytes = self.smartcache_mt_line_size * total_num_blocks
+
             memory_size = self._args.generation_buffer_size
             if total_size > memory_size:
                 write_size = memory_size - (memory_size % sample_size)
@@ -89,7 +101,7 @@ class IndexedBinaryGeneratorSmartCache(DataGenerator):
                 myfmt = 'B' * data_to_write
                 binary_data = struct.pack(myfmt, *records[:data_to_write])
 
-                chunk_size = chunk_size = int(os.getenv("SC_BLOCK_SIZE_BYTES", 2 * 1024 * 1024))  # Defaults to 2MB if not set
+                
                 chunks = [binary_data[i:i + chunk_size] for i in range(0, len(binary_data), chunk_size)]
                 smc_dir = os.getenv("SC_BLOCK_DIR", "/tmp/smartcache_dir")
                 local_smc_rank = get_first_subdirectory(smc_dir)
@@ -117,9 +129,11 @@ class IndexedBinaryGeneratorSmartCache(DataGenerator):
                 # data_file.write(binary_data) 
                 # struct._clearcache()
 
+                
                 # Write offsets
                 myfmt = 'Q' * samples_to_write
-                offsets = range(0, data_to_write, sample_size)
+                offsets = range(0, total_smartcache_metadata_bytes, sample_smartcache_metadata_bytes)
+
                 offsets = offsets[:samples_to_write]
                 binary_offsets = struct.pack(myfmt, *offsets)
                 off_file.write(binary_offsets)
@@ -129,6 +143,7 @@ class IndexedBinaryGeneratorSmartCache(DataGenerator):
                 sample_sizes = [sample_size] * samples_to_write
                 binary_sizes = struct.pack(myfmt, *sample_sizes)
                 sz_file.write(binary_sizes)
+                self.logger.debug(f"writing file {data_file.name} with size {write_size} offsets to write: {offsets}, sizes to write: {sample_sizes}")
 
                 written_bytes = written_bytes + data_to_write
             data_file.close()
