@@ -43,9 +43,18 @@ Generator for creating data in NPZ format.
 class IndexedBinaryGeneratorSmartCache(DataGenerator):
     def __init__(self):
         super().__init__()
+        self.smartcache_block_size = int(os.getenv("SC_BLOCK_SIZE_BYTES", 2 * 1024 * 1024)) # Defaults to 2MB if not set
         self.block_hash_size = 64
         self.delimiter_size = 1
         self.smartcache_mt_line_size = self.block_hash_size + self.delimiter_size
+        smc_dir = os.getenv("SC_BLOCK_DIR", "/tmp/smartcache_dir")
+        local_smc_rank = get_first_subdirectory(smc_dir)
+
+        if local_smc_rank is None:
+            raise Exception("Error: SmartCache directory structure -- No rank subdir")
+
+        local_smc_rank_path = smc_dir + "/" + local_smc_rank
+        self.smc_client = smartcache_py.SmartCacheClient(local_smc_rank_path, self.smartcache_block_size)
 
     def index_file_path_off(self, prefix_path):
         return prefix_path + '.off.idx'
@@ -74,9 +83,8 @@ class IndexedBinaryGeneratorSmartCache(DataGenerator):
             write_size = total_size
 
             # SmartCache specific
-            chunk_size = chunk_size = int(os.getenv("SC_BLOCK_SIZE_BYTES", 2 * 1024 * 1024))  # Defaults to 2MB if not set
-            sample_num_blocks = math.ceil(sample_size / chunk_size)
-            total_num_blocks = math.ceil(total_size / chunk_size)
+            sample_num_blocks = math.ceil(sample_size / self.smartcache_block_size)
+            total_num_blocks = math.ceil(total_size / self.smartcache_block_size)
             sample_smartcache_metadata_bytes = self.smartcache_mt_line_size * sample_num_blocks
             total_smartcache_metadata_bytes = self.smartcache_mt_line_size * total_num_blocks
 
@@ -86,12 +94,27 @@ class IndexedBinaryGeneratorSmartCache(DataGenerator):
             out_path_spec = self.storage.get_uri(self._file_list[i])
             out_path_spec_off_idx = self.index_file_path_off(out_path_spec)
             out_path_spec_sz_idx = self.index_file_path_size(out_path_spec)
+
+            if self._args.smartcache_correctness_test:
+                self.logger.debug(f"ref files ")
+                out_path_spec_ref = out_path_spec + ".ref"
+                out_path_spec_off_idx_ref = out_path_spec_off_idx + ".ref"
+                out_path_spec_sz_idx_ref = out_path_spec_sz_idx + ".ref"
+                self.logger.debug(f"ref files {out_path_spec_ref} , {out_path_spec_off_idx_ref} , {out_path_spec_sz_idx_ref} ")
+
             progress(i + 1, self.total_files_to_generate, "Generating Indexed Binary Data")
             prev_out_spec = out_path_spec
             written_bytes = 0
             data_file = open(out_path_spec, "a")
             off_file = open(out_path_spec_off_idx, "wb")
             sz_file = open(out_path_spec_sz_idx, "wb")
+
+            if self._args.smartcache_correctness_test:
+                data_file_ref = open(out_path_spec_ref, "wb")
+                off_file_ref = open(out_path_spec_off_idx_ref, "wb")
+                sz_file_ref = open(out_path_spec_sz_idx_ref, "wb")
+                self.logger.debug(f"Opened ref files")
+
             records = np.random.randint(255, size=write_size, dtype=np.uint8)
             while written_bytes < total_size:
                 data_to_write = write_size if written_bytes + write_size <= total_size else total_size - written_bytes
@@ -101,34 +124,39 @@ class IndexedBinaryGeneratorSmartCache(DataGenerator):
                 myfmt = 'B' * data_to_write
                 binary_data = struct.pack(myfmt, *records[:data_to_write])
 
-                
-                chunks = [binary_data[i:i + chunk_size] for i in range(0, len(binary_data), chunk_size)]
-                smc_dir = os.getenv("SC_BLOCK_DIR", "/tmp/smartcache_dir")
-                local_smc_rank = get_first_subdirectory(smc_dir)
-
-                if local_smc_rank is None:
-                    raise Exception("Error: SmartCache directory structure -- No rank subdir")
-
-                local_smc_rank_path = smc_dir + "/" + local_smc_rank
-                smc_client = smartcache_py.SmartCacheClient(local_smc_rank_path, chunk_size)
-
-                for chunk in chunks:
-                    if len(chunk) < chunk_size:
-                        chunk = chunk.ljust(chunk_size, b'\x00')
-                    block_hash = smc_client.write(chunk)
-                    data_file.write(block_hash + "\n")
-                    # data_file.write(binary_data) 
+                if self._args.smartcache_correctness_test:
+                    self.logger.debug(f"Writing ref files")
+                    data_file_ref.write(binary_data)
                     struct._clearcache()
 
-                # SmartCache write
-                # Split file into blocks of size
-                # for each block
-                #   smartcache_write(block)
-                #   metadata_file.write(block_hash)
+                    # Write offsets
+                    myfmt = 'Q' * samples_to_write
+                    offsets_ref = range(0, data_to_write, sample_size)
+                    offsets_ref = offsets_ref[:samples_to_write]
+                    binary_offsets_ref = struct.pack(myfmt, *offsets_ref)
+                    off_file_ref.write(binary_offsets_ref)
 
-                # data_file.write(binary_data) 
-                # struct._clearcache()
+                    # Write sizes
+                    myfmt = 'Q' * samples_to_write
+                    sample_sizes_ref = [sample_size] * samples_to_write
+                    binary_sizes_ref = struct.pack(myfmt, *sample_sizes_ref)
+                    sz_file_ref.write(binary_sizes_ref)
+                
+                samples_data = [binary_data[i*sample_size:(i+1)*sample_size] for i in range(0, self.num_samples)]
 
+                sample_chunks = []
+                for sample_idx in range(0, self.num_samples):
+                    chunks = [samples_data[sample_idx][j:j + self.smartcache_block_size] for j in range(0, sample_size, self.smartcache_block_size)]
+                    sample_chunks.append(chunks)
+                
+                for chunks in sample_chunks:
+                    for chunk in chunks:
+                        if len(chunk) < self.smartcache_block_size:
+                            self.logger.debug(f"Padding chunk at the end of sample for {out_path_spec}")
+                            chunk = chunk.ljust(self.smartcache_block_size, b'\x00')
+                        block_hash = self.smc_client.write(chunk)
+                        data_file.write(block_hash + "\n")
+                struct._clearcache()
                 
                 # Write offsets
                 myfmt = 'Q' * samples_to_write

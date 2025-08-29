@@ -142,9 +142,11 @@ class ConfigArguments:
     checkpoint_mechanism_classname = None
     data_loader_sampler: DataLoaderSampler = None
     reader_classname: str = None
+    # generator_classname: str = None
     multiprocessing_context: str = "fork"
     pin_memory: bool = True
     odirect: bool = False
+    smartcache_correctness_test: bool = False
 
     # derived fields
     required_samples: int = 1
@@ -164,6 +166,7 @@ class ConfigArguments:
     global_index_map = None
     data_loader_class = None
     reader_class = None
+    # generator_class = None
     checkpoint_mechanism_class = None
     ksm_init = False
     native_data_loader = False
@@ -369,6 +372,20 @@ class ConfigArguments:
                         self.logger.info(f"Discovered custom data reader {class_name}")
                     self.reader_class = obj
                     break
+        ## Generator
+        '''
+        if self.generator_classname is not None:
+            from dlio_benchmark.data_generator.data_generator import DataGenerator
+            classname = self.generator_classname.split(".")[-1]
+            module = importlib.import_module(".".join(self.generator_classname.split(".")[:-1]))
+            for class_name, obj in inspect.getmembers(module):
+                if class_name == classname and issubclass(obj, DataGenerator):
+                    if DLIOMPI.get_instance().rank() == 0:
+                        self.logger.info(f"Discovered custom data generator {class_name}")
+                    self.generator_class = obj
+                    break
+        '''
+        ##
         self.train_file_map = {self.my_rank : {}}
         self.val_file_map = {self.my_rank : {}}
         self.train_global_index_map = {}
@@ -495,6 +512,12 @@ def GetConfig(args, key):
             value = args.storage_type
         elif keys[1] == "storage_root":
             value = args.storage_root
+
+    '''
+    if len(keys) > 1 and keys[0] == "smartcache_correctness_test":
+        if keys[1] == "smartcache_correctness_test":
+            value = args.smartcache_correctness_test
+    '''
     
     if len(keys) > 1 and keys[0] == "dataset":
         if keys[1] == "record_length_bytes":
@@ -575,6 +598,16 @@ def GetConfig(args, key):
             value = args.preprocess_time.get("stdev", None)
         elif keys[1] == "pin_memory":
             value = args.pin_memory
+        elif keys[1] == 'smartcache_correctness_test':
+            value = args.smartcache_correctness_test
+
+    # data generator
+    '''
+    generator = None
+    if len(keys) > 1 and (keys[0] == "data_generator" or keys[0] == "generator"):
+        if keys[1] == "generator_classname":
+            value = args.generator_classname
+    '''
 
     # training relevant setting
     if len(keys) > 1 and keys[0] == "train":
@@ -716,6 +749,9 @@ def LoadConfig(args, config):
         if 'storage_root' in config['storage']:
             args.storage_root = config['storage']['storage_root']
 
+    if 'smartcache_correctness_test' in config:
+        args.smartcache_correctness_test = config['smartcache_correctness_test']
+
     # dataset related settings
     if 'dataset' in config:
         if 'record_length_bytes' in config['dataset']:
@@ -797,6 +833,8 @@ def LoadConfig(args, config):
             args.transfer_size = reader['transfer_size']
         if 'odirect' in reader:
             args.odirect = reader['odirect']
+        if 'smartcache_correctness_test' in reader:
+            args.smartcache_correctness_test = reader['smartcache_correctness_test']
 
         args.preprocess_time = {}
         if 'preprocess_time' in reader:
@@ -814,6 +852,18 @@ def LoadConfig(args, config):
             args.preprocess_time["stdev"] = reader['preprocess_time_stdev']
         if 'pin_memory' in reader:
             args.pin_memory = reader['pin_memory']
+
+    # data generator
+    '''
+    generator = None
+    if 'data_generator' in config:
+        generator = config['data_generator']
+    elif 'generator' in config:
+        generator = config['generator']
+    if generator is not None:
+        if 'generator_classname' in generator:
+            args.generator_classname = generator['generator_classname']
+    '''
 
     # training relevant setting
     if 'train' in config:
