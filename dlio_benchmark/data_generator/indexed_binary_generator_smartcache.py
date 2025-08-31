@@ -152,9 +152,11 @@ class IndexedBinaryGeneratorSmartCache(DataGenerator):
                 for chunks in sample_chunks:
                     for chunk in chunks:
                         if len(chunk) < self.smartcache_block_size:
-                            self.logger.debug(f"Padding chunk at the end of sample for {out_path_spec}")
+                            padding_size = self.smartcache_block_size - len(chunk)
+                            self.logger.debug(f"Padding chunk with {padding_size} bytes at the end of sample for {out_path_spec}")
                             chunk = chunk.ljust(self.smartcache_block_size, b'\x00')
                         block_hash = self.smc_client.write(chunk)
+                        self.logger.debug(f"written block with hash {block_hash} for sample in file {out_path_spec}")
                         data_file.write(block_hash + "\n")
                 struct._clearcache()
                 
