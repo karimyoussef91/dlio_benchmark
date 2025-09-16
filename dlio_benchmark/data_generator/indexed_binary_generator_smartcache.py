@@ -34,6 +34,11 @@ import math
 # SmartCache
 import smartcache_py
 
+#Debugging
+import socket
+
+
+
 
 dlp = Profile(MODULE_DATA_GENERATOR)
 
@@ -84,7 +89,7 @@ class IndexedBinaryGeneratorSmartCache(DataGenerator):
 
             # SmartCache specific
             sample_num_blocks = math.ceil(sample_size / self.smartcache_block_size)
-            total_num_blocks = math.ceil(total_size / self.smartcache_block_size)
+            total_num_blocks = sample_num_blocks * self.num_samples # math.ceil(total_size / self.smartcache_block_size)
             sample_smartcache_metadata_bytes = self.smartcache_mt_line_size * sample_num_blocks
             total_smartcache_metadata_bytes = self.smartcache_mt_line_size * total_num_blocks
 
@@ -142,7 +147,7 @@ class IndexedBinaryGeneratorSmartCache(DataGenerator):
                     binary_sizes_ref = struct.pack(myfmt, *sample_sizes_ref)
                     sz_file_ref.write(binary_sizes_ref)
                 
-                samples_data = [binary_data[i*sample_size:(i+1)*sample_size] for i in range(0, self.num_samples)]
+                samples_data = [binary_data[k*sample_size:(k+1)*sample_size] for k in range(0, self.num_samples)]
 
                 sample_chunks = []
                 for sample_idx in range(0, self.num_samples):
@@ -151,12 +156,18 @@ class IndexedBinaryGeneratorSmartCache(DataGenerator):
                 
                 for chunks in sample_chunks:
                     for chunk in chunks:
+                        padded = False
                         if len(chunk) < self.smartcache_block_size:
                             padding_size = self.smartcache_block_size - len(chunk)
                             self.logger.debug(f"Padding chunk with {padding_size} bytes at the end of sample for {out_path_spec}")
                             chunk = chunk.ljust(self.smartcache_block_size, b'\x00')
+                            padded = True
                         block_hash = self.smc_client.write(chunk)
-                        self.logger.debug(f"written block with hash {block_hash} for sample in file {out_path_spec}")
+                        # debug
+                        hostname = socket.gethostname()
+                        self.logger.debug(f"written block with hash {block_hash} for sample in file {out_path_spec} on host {hostname}")
+                        if padded:
+                            self.logger.debug(f"block {block_hash} PADDED")
                         data_file.write(block_hash + "\n")
                 struct._clearcache()
                 

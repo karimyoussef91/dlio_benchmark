@@ -27,8 +27,14 @@ from dlio_benchmark.common.enumerations import DataLoaderSampler
 from dlio_benchmark.reader.reader_handler import FormatReader
 from dlio_benchmark.utils.utility import Profile, get_first_subdirectory
 
+import hashlib
+
 # SmartCache
 import smartcache_py
+
+#Debugging
+import socket
+
 
 dlp = Profile(MODULE_DATA_READER)
 
@@ -136,10 +142,18 @@ class IndexedBinaryReaderSmartCache(FormatReader):
 
             if len(block_hash) != self.block_hash_size:
                 raise ValueError(f"Block hash {block_hash} does not match expected size {self.block_hash_size}")
+            
+            # debug
+            hostname = socket.gethostname()
+
             # Assuming the block hash is stored as a string, decode it
             block_hash = block_hash.decode('utf-8')
-            self.logger.debug(f"Sample index {sample_index} Reading block hash {block_hash} from file {filename}")
+            padding_size = self.smartcache_block_size - block_data_length
+            self.logger.debug(f"Sample index {sample_index} Reading block hash {block_hash} from file {filename} block_data_length {block_data_length} padding size {padding_size} on host {hostname}")
             data = self.smc_client.read(block_hash)
+            sha256_hash = hashlib.sha256(data).hexdigest()
+            if sha256_hash != block_hash:
+                self.logger.debug(f"Data integrity check failed for block hash {block_hash} which is {sha256_hash} on host {hostname}")
             image[image_block_offset:image_block_offset + block_data_length] = np.frombuffer(data, dtype=np.uint8)[:block_data_length] # data[:block_data_length]
             image_block_offset = image_block_offset + block_data_length
 
@@ -157,7 +171,8 @@ class IndexedBinaryReaderSmartCache(FormatReader):
                 self.logger.debug(f"Correctness test of size {size} PASSED")
             else:
                 first_non_matching = np.where(image != image_ref)[0][0]
-                self.logger.error(f"Correctness test for sample {filename} with index {sample_index} from offset {offset} of size {size} FAILED - Size of difference {np.sum(image != image_ref)} first non-matching {first_non_matching}")
+                last_non_matching = np.where(image != image_ref)[0][-1]
+                self.logger.error(f"Correctness test for sample {filename} with index {sample_index} from offset {offset} of size {size} FAILED - Size of difference {np.sum(image != image_ref)} first non-matching {first_non_matching} last non-matching {last_non_matching}")
                 
 
                 
