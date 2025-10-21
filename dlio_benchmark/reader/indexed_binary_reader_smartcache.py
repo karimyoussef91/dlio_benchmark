@@ -87,14 +87,15 @@ class IndexedBinaryReaderSmartCache(FormatReader):
                 sizes = self.read_longs(f, self._args.num_samples_per_file)
                 self.logger.debug(f"read sizes {sizes} from file {sz_file}")
                 self.file_map_ibr[filename].append(sizes)
-            with open(offset_file_ref, 'rb') as f:
-                offsets_ref = self.read_longs(f, self._args.num_samples_per_file)
-                self.logger.debug(f"read offsets ref {offsets} from file {offset_file}")
-                self.file_map_ibr[filename].append(offsets_ref)
-            with open(sz_file_ref, 'rb') as f:
-                sizes_ref = self.read_longs(f, self._args.num_samples_per_file)
-                self.logger.debug(f"read sizes ref {sizes} from file {sz_file}")
-                self.file_map_ibr[filename].append(sizes_ref)
+            if self._args.smartcache_correctness_test:
+                with open(offset_file_ref, 'rb') as f:
+                    offsets_ref = self.read_longs(f, self._args.num_samples_per_file)
+                    self.logger.debug(f"read offsets ref {offsets} from file {offset_file}")
+                    self.file_map_ibr[filename].append(offsets_ref)
+                with open(sz_file_ref, 'rb') as f:
+                    sizes_ref = self.read_longs(f, self._args.num_samples_per_file)
+                    self.logger.debug(f"read sizes ref {sizes} from file {sz_file}")
+                    self.file_map_ibr[filename].append(sizes_ref)
     @dlp.log
     def load_index(self):
         if self._args.data_loader_sampler == DataLoaderSampler.ITERATIVE:
@@ -158,6 +159,7 @@ class IndexedBinaryReaderSmartCache(FormatReader):
             image_block_offset = image_block_offset + block_data_length
 
         if self._args.smartcache_correctness_test:
+            print("correctness test ON")
             offset_ref = self.file_map_ibr[filename][2][sample_index]
             size_ref = self.file_map_ibr[filename][3][sample_index]
 

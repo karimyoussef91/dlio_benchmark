@@ -70,10 +70,10 @@ class IndexedBinaryGeneratorSmartCache(DataGenerator):
     @dlp.log
     def generate(self):
         """
-        Generator for creating data in NPZ format of 3d dataset.
+        Generator for creating data in binary format of 3d dataset.
         """
         super().generate()
-        np.random.seed(10)
+        # np.random.seed(10)
         GB=1024*1024*1024
         samples_processed = 0
         total_samples = self.total_files_to_generate * self.num_samples
@@ -81,6 +81,8 @@ class IndexedBinaryGeneratorSmartCache(DataGenerator):
         # self.logger.info(dim)
         
         for i in dlp.iter(range(self.my_rank, int(self.total_files_to_generate), self.comm_size)):
+            # np.random.seed(10 + self.my_rank + i)
+            np.random.seed()
             dim1 = dim[2*i]
             dim2 = dim[2*i + 1]
             sample_size = dim1 * dim2
@@ -162,7 +164,7 @@ class IndexedBinaryGeneratorSmartCache(DataGenerator):
                             self.logger.debug(f"Padding chunk with {padding_size} bytes at the end of sample for {out_path_spec}")
                             chunk = chunk.ljust(self.smartcache_block_size, b'\x00')
                             padded = True
-                        block_hash = self.smc_client.write(chunk)
+                        block_hash = self.smc_client.write_pfs("/p/lustre5/youssef2/smartcache_blocks_20480", chunk)
                         # debug
                         hostname = socket.gethostname()
                         self.logger.debug(f"written block with hash {block_hash} for sample in file {out_path_spec} on host {hostname}")

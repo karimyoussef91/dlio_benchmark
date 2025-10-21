@@ -6,12 +6,13 @@ module load StdEnv  gcc/11.2.1-magic libfabric/2.1 cray-mpich/9.0.1
 export LD_LIBRARY_PATH=/p/lustre5/youssef2/dlio_bench_venv/lib/:${LD_LIBRARY_PATH}
 
 # Default values for environment variables
+num_samples=20480
 uv_threadpool_size=1
 smartcache_block_size=$((2*1024*1024))
 smartcache_ranks_per_node=1
 application_ranks_per_node=16
 num_blocks=1024
-pfs_blocks_path=/p/lustre5/youssef2/smartcache_blocks_20480
+pfs_blocks_path=/p/lustre5/youssef2/smartcache_blocks_${num_samples}
 smartcache_base_path=/l/ssd/smartcache_dir/
 smartcache_bin_dir=/p/vast1/youssef2/smartcache/build/bin
 shuffle=0
@@ -54,6 +55,10 @@ while [[ $# -gt 0 ]]; do
             smartcache_bin_dir="${1#*=}"
             shift
             ;;
+        --num_samples=*)
+        num_samples="${1#*=}"
+        shift
+        ;;
         --slurm)
             slurm=true
             shift
@@ -64,6 +69,7 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
 
 # source ~/load_dev.sh
 export DFTRACER_ENABLE=0
@@ -97,6 +103,7 @@ else
 fi
 # nnodes=$(flux resource list --format={nnodes} | tail -n 1)
 ranks=$((${nnodes}*${smartcache_ranks_per_node}))
+cores=$((${nnodes}*(${smartcache_ranks_per_node} + ${uv_threadpool_size})))
 
 run_prefix=""
 
@@ -106,16 +113,12 @@ else
     run_prefix="flux run"
 fi
 
-# rm -rf /p/lustre5/youssef2/dlio_data/unet3d_smartcache/
-# rm -rf /p/lustre5/youssef2/smartcache_blocks/*
-
 # valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes --log-file=valgrind.%p.txt 
 
 
 # ${run_prefix} -N ${nnodes} rm -rf ${smartcache_base_path}
 # mpirun -np ${ranks} --map-by slot:PE=${uv_threadpool_size} --bind-to core -host ${hosts} -x DFTRACER_ENABLE -x DFTRACER_DISABLE_IO -x DFTRACER_INC_METADATA -x UV_THREADPOOL_SIZE ${smartcache_bin_dir}/smartcache_service -b ${smartcache_base_path} -s ${smartcache_block_size} &
-
-${run_prefix} -N ${nnodes} -n ${ranks} ${smartcache_bin_dir}/smartcache_service -b ${smartcache_base_path} -p ${pfs_blocks_path} -s ${smartcache_block_size} &
+${run_prefix} -N ${nnodes} --tasks-per-node=${smartcache_ranks_per_node} --cores=${cores} --setopt=mpibind=off ${smartcache_bin_dir}/smartcache_service_dbg -b ${smartcache_base_path} -p ${pfs_blocks_path} -s ${smartcache_block_size} &
 smartcache_pid=$!
 sleep 60 # Wait for SmartCache to start
 
@@ -125,35 +128,44 @@ source /p/lustre5/youssef2/dlio_bench_venv/bin/activate
 
 # export DLIO_LOG_LEVEL="debug"
 
-# export FI_CXI_DEFAULT_TX_SIZE=32768   # or higher, depends on workload
+# rm -rf /p/lustre5/youssef2/dlio_data/unet3d_smartcache/
 
-
-echo "Generating Data..."
-flux run -N ${nnodes} --tasks-per-node=16 --cores=128 --setopt=mpibind=off dlio_benchmark workload=unet3d_h100 \
-++workload.workflow.generate_data=True \
-++workload.workflow.train=False \
-workload.dataset.data_folder=/p/lustre5/youssef2/dlio_data/unet3d_smartcache_20480/ \
-workload.dataset.format=indexed_binary_smartcache \
-workload.dataset.num_samples_per_file=1 \
-workload.dataset.num_files_train=20480 \
-++hydra.run.dir=/p/lustre5/youssef2/unet3d_output_smartcache_20480_generate \
-++workload.reader.smartcache_correctness_test=False \
-workload.dataset.record_length_bytes_stdev=0
-
-# sleep 300
-
-# echo "Removing cached copies"
-# flux run -N 2 -n 2 python remove_local_smartcache_blocks.py /l/ssd/smartcache_dir/
-
-
-# echo "Training..."
-# flux run -N 8 -n 32 dlio_benchmark workload=unet3d_h100 \
-# ++workload.workflow.generate_data=False \
-# ++workload.workflow.train=True \
+# echo "Generating Data..."
+# flux run -N 8 -n 8 dlio_benchmark workload=unet3d_h100 \
+# ++workload.workflow.generate_data=True \
+# ++workload.workflow.train=False \
 # workload.dataset.data_folder=/p/lustre5/youssef2/dlio_data/unet3d_smartcache/ \
 # workload.dataset.format=indexed_binary_smartcache \
 # workload.dataset.num_samples_per_file=1 \
 # workload.dataset.num_files_train=1280 \
-# ++hydra.run.dir=/p/lustre5/youssef2/unet3d_output_smartcache \
-# ++workload.reader.smartcache_correctness_test=False 
+# ++hydra.run.dir=/p/lustre5/youssef2/unet3d_output_baseline \
+# ++workload.reader.smartcache_correctness_test=False \
+# workload.dataset.record_length_bytes_stdev=0
+
+# echo "Removing cached copies"
+# flux run -N 2 -n 2 python remove_local_smartcache_blocks.py /l/ssd/smartcache_dir/
+
+# export FI_OFI_RXM_EAGER_SIZE=$((2*1024*1024))
+export FI_LOG_LEVEL=debug
+export FI_PROVIDER=cxi   # or psm2, gni, etc., depending on your hardware
+
+export FI_CXI_DEFAULT_TX_SIZE=$((32*1024))
+export MPICH_OFI_MAX_RMA_TRANSACTIONS=512
+
+proc_per_node=4
+read_threads=4
+numcores=$((${nnodes} * ${proc_per_node} * ${read_threads}))
+echo "num_samples: ${num_samples}"
+echo "Training..."
+flux run -N ${nnodes} --tasks-per-node=${proc_per_node} --cores=${numcores} --setopt=mpibind=off dlio_benchmark workload=unet3d_h100 \
+++workload.workflow.generate_data=False \
+++workload.workflow.train=True \
+workload.dataset.data_folder=/p/lustre5/youssef2/dlio_data/unet3d_smartcache_${num_samples}/ \
+workload.dataset.format=indexed_binary_smartcache \
+workload.dataset.num_samples_per_file=1 \
+workload.dataset.num_files_train=${num_samples} \
+++hydra.run.dir=/p/lustre5/youssef2/unet3d_output_smartcache_${num_samples} \
+++workload.reader.smartcache_correctness_test=False \
+workload.dataset.record_length_bytes_stdev=0 \
+workload.train.computation_time=0
 

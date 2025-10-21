@@ -11,7 +11,7 @@ smartcache_block_size=$((2*1024*1024))
 smartcache_ranks_per_node=1
 application_ranks_per_node=16
 num_blocks=1024
-pfs_blocks_path=/p/lustre5/youssef2/smartcache_blocks_20480
+pfs_blocks_path=/p/lustre3/youssef2/smartcache_blocks
 smartcache_base_path=/l/ssd/smartcache_dir/
 smartcache_bin_dir=/p/vast1/youssef2/smartcache/build/bin
 shuffle=0
@@ -80,7 +80,7 @@ export SC_BLOCK_SIZE_BYTES=${smartcache_block_size}
 export SC_BLOCK_DIR=${smartcache_base_path}
 # export OMP_NUM_THREADS=4
 
-# rm -rf /l/ssd/*
+rm -rf /l/ssd/*
 # rm -rf ${pfs_blocks_path}
 # mkdir ${pfs_blocks_path}
 
@@ -106,16 +106,12 @@ else
     run_prefix="flux run"
 fi
 
-# rm -rf /p/lustre5/youssef2/dlio_data/unet3d_smartcache/
-# rm -rf /p/lustre5/youssef2/smartcache_blocks/*
-
 # valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes --log-file=valgrind.%p.txt 
 
 
 # ${run_prefix} -N ${nnodes} rm -rf ${smartcache_base_path}
 # mpirun -np ${ranks} --map-by slot:PE=${uv_threadpool_size} --bind-to core -host ${hosts} -x DFTRACER_ENABLE -x DFTRACER_DISABLE_IO -x DFTRACER_INC_METADATA -x UV_THREADPOOL_SIZE ${smartcache_bin_dir}/smartcache_service -b ${smartcache_base_path} -s ${smartcache_block_size} &
-
-${run_prefix} -N ${nnodes} -n ${ranks} ${smartcache_bin_dir}/smartcache_service -b ${smartcache_base_path} -p ${pfs_blocks_path} -s ${smartcache_block_size} &
+${run_prefix} -N ${nnodes} -n ${ranks} ${smartcache_bin_dir}/smartcache_service -b ${smartcache_base_path} -s ${smartcache_block_size} &
 smartcache_pid=$!
 sleep 60 # Wait for SmartCache to start
 
@@ -123,37 +119,33 @@ sleep 60 # Wait for SmartCache to start
 # ${run_prefix} -N ${nnodes} ls /tmp
 source /p/lustre5/youssef2/dlio_bench_venv/bin/activate
 
-# export DLIO_LOG_LEVEL="debug"
+export DLIO_LOG_LEVEL="debug"
 
-# export FI_CXI_DEFAULT_TX_SIZE=32768   # or higher, depends on workload
-
+rm -rf /p/lustre5/youssef2/dlio_data/unet3d_smartcache/
 
 echo "Generating Data..."
-flux run -N ${nnodes} --tasks-per-node=16 --cores=128 --setopt=mpibind=off dlio_benchmark workload=unet3d_h100 \
+flux run -N 2 -n 8 dlio_benchmark workload=unet3d_h100 \
 ++workload.workflow.generate_data=True \
 ++workload.workflow.train=False \
-workload.dataset.data_folder=/p/lustre5/youssef2/dlio_data/unet3d_smartcache_20480/ \
+workload.dataset.data_folder=/p/lustre5/youssef2/dlio_data/unet3d_smartcache/ \
 workload.dataset.format=indexed_binary_smartcache \
-workload.dataset.num_samples_per_file=1 \
-workload.dataset.num_files_train=20480 \
-++hydra.run.dir=/p/lustre5/youssef2/unet3d_output_smartcache_20480_generate \
-++workload.reader.smartcache_correctness_test=False \
-workload.dataset.record_length_bytes_stdev=0
+workload.dataset.num_samples_per_file=2 \
+workload.dataset.num_files_train=168 \
+++hydra.run.dir=/p/lustre5/youssef2/unet3d_output_baseline \
+++workload.reader.smartcache_correctness_test=True
 
-# sleep 300
+# flux run -N 2 -n 2 ${smartcache_bin_dir}/../../test/verify_hashes_distributed.sh > verify_hashes_output.txt
 
-# echo "Removing cached copies"
-# flux run -N 2 -n 2 python remove_local_smartcache_blocks.py /l/ssd/smartcache_dir/
+echo "Training..."
+flux run -N 2 -n 8 dlio_benchmark workload=unet3d_h100 \
+++workload.workflow.generate_data=False \
+++workload.workflow.train=True \
+workload.dataset.data_folder=/p/lustre5/youssef2/dlio_data/unet3d_smartcache/ \
+workload.dataset.format=indexed_binary_smartcache \
+workload.dataset.num_samples_per_file=2 \
+workload.dataset.num_files_train=168 \
+++hydra.run.dir=/p/lustre5/youssef2/unet3d_output_baseline \
+++workload.reader.smartcache_correctness_test=True
 
-
-# echo "Training..."
-# flux run -N 8 -n 32 dlio_benchmark workload=unet3d_h100 \
-# ++workload.workflow.generate_data=False \
-# ++workload.workflow.train=True \
-# workload.dataset.data_folder=/p/lustre5/youssef2/dlio_data/unet3d_smartcache/ \
-# workload.dataset.format=indexed_binary_smartcache \
-# workload.dataset.num_samples_per_file=1 \
-# workload.dataset.num_files_train=1280 \
-# ++hydra.run.dir=/p/lustre5/youssef2/unet3d_output_smartcache \
-# ++workload.reader.smartcache_correctness_test=False 
-
+# flux run -N 2 -n 2 ${smartcache_bin_dir}/../../test/verify_hashes_distributed.sh > verify_hashes_output_after_train.txt
+# flux run -N 2 -n 2 ls -R /l/ssd/smartcache_dir/
