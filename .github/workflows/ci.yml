@@ -77,7 +77,20 @@ jobs:
           python -m venv ${VENV_PATH}
           source ${VENV_PATH}/bin/activate
           pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r requirements-test.txt
+      - name: test_ai_logging
+        env:
+          DFTRACER_INC_METADATA: 1
+          DFTRACER_TRACE_COMPRESSION: 0
+        run: |
+          source ${VENV_PATH}/bin/activate
+          pytest tests/dlio_ai_logging_test.py -n 4 -v
+          rm -rf outputs
+      - name: test_dataset_dimension_gen_data
+        run: |
+          source ${VENV_PATH}/bin/activate
+          pytest tests/dlio_dataset_dimension_test.py -n 4 -v
+          rm -rf outputs
       - name: test_checkpoint_epoch
         run: |
           source ${VENV_PATH}/bin/activate
