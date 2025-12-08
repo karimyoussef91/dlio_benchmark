@@ -155,6 +155,8 @@ class IndexedBinaryReaderSmartCache(FormatReader):
             sha256_hash = hashlib.sha256(data).hexdigest()
             if sha256_hash != block_hash:
                 self.logger.debug(f"Data integrity check failed for block hash {block_hash} which is {sha256_hash} on host {hostname}")
+            if len(data) < block_data_length:
+                raise ValueError(f"Retrieved data length {len(data)} is less than expected block data length {block_data_length} for block hash {block_hash}")
             image[image_block_offset:image_block_offset + block_data_length] = np.frombuffer(data, dtype=np.uint8)[:block_data_length] # data[:block_data_length]
             image_block_offset = image_block_offset + block_data_length
 

@@ -25,7 +25,7 @@ def main():
     parser = argparse.ArgumentParser(description='Plot I/O throughput from log files.')
     parser.add_argument('sample_size', type=int, help='Sample size in bytes')
     parser.add_argument('log_files', nargs='+', help='Log file names')
-    parser.add_argument('--output', '-o', type=str, default='io_throughput_latest.png', help='Output image file name (default: io_throughput.png)')
+    parser.add_argument('--output', '-o', type=str, default='io_throughput_mammoth.png', help='Output image file name (default: io_throughput.png)')
     args = parser.parse_args()
 
     plt.rcParams.update({'font.size': 28})
@@ -39,7 +39,10 @@ def main():
     plt.xlabel('Epoch')
     plt.ylabel('I/O Throughput (GB/s)')
     plt.title('I/O Throughput per Epoch')
-    plt.legend()
+    
+    # Add legend in lower right with smaller font
+    plt.legend(loc='lower right', fontsize=20)
+    
     plt.grid(True)
     plt.tight_layout()
     plt.gca().xaxis.set_major_locator(plt.MaxNLocator(integer=True))  # Ensure integer X axis

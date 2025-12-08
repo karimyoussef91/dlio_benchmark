@@ -59,7 +59,8 @@ class IndexedBinaryGeneratorSmartCache(DataGenerator):
             raise Exception("Error: SmartCache directory structure -- No rank subdir")
 
         local_smc_rank_path = smc_dir + "/" + local_smc_rank
-        self.smc_client = smartcache_py.SmartCacheClient(local_smc_rank_path, self.smartcache_block_size)
+        run_config_path = os.getenv("SMARTCACHE_RUN_CONFIG", "/tmp/smartcache_run_conf/run_config.json")
+        self.smc_client = smartcache_py.SmartCacheClient(run_config_path)
 
     def index_file_path_off(self, prefix_path):
         return prefix_path + '.off.idx'
@@ -164,7 +165,7 @@ class IndexedBinaryGeneratorSmartCache(DataGenerator):
                             self.logger.debug(f"Padding chunk with {padding_size} bytes at the end of sample for {out_path_spec}")
                             chunk = chunk.ljust(self.smartcache_block_size, b'\x00')
                             padded = True
-                        block_hash = self.smc_client.write_pfs("/p/lustre5/youssef2/smartcache_blocks_20480", chunk)
+                        block_hash = self.smc_client.write_pfs("/p/lustre3/youssef2/smartcache_blocks_20480_140M", chunk)
                         # debug
                         hostname = socket.gethostname()
                         self.logger.debug(f"written block with hash {block_hash} for sample in file {out_path_spec} on host {hostname}")

@@ -14,14 +14,12 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 """
-from numpy import append
 from dlio_benchmark.utils.config import ConfigArguments
 from dlio_benchmark.utils.utility import utcnow, DLIOMPI, DLIOLogger
 
 import os
 import json
 import math
-import logging
 import pandas as pd
 from time import time
 import numpy as np
@@ -59,7 +57,7 @@ class StatsCounter(object):
         self.summary = {}
         self.summary['start'] = utcnow()
         self.summary['num_accelerators'] = self.comm_size
-        self.summary['num_hosts'] = self.comm_size //self.MPI.npernode()
+        self.summary['num_hosts'] = self.MPI.nnodes()
         self.summary['hostname'] = socket.gethostname()
         self.summary['metric'] = {}
         self.summary['num_files_train'] = self.args.num_files_train
@@ -99,16 +97,16 @@ class StatsCounter(object):
         self.output = {}
         self.output['host_memory_GB'] = psutil.virtual_memory().total/1024./1024./1024
         host_memory = np.zeros(self.MPI.nnodes())
-        host_memory_agg = np.zeros(self.MPI.size()//self.MPI.npernode())
+        host_memory_agg = np.zeros(self.MPI.nnodes())
         if self.MPI.local_rank()==0:
-            host_memory[self.MPI.rank()//self.MPI.npernode()] = self.output['host_memory_GB']
+            host_memory[self.MPI.node()] = self.output['host_memory_GB']
         self.MPI.comm().Reduce(host_memory, host_memory_agg, op=MPI.SUM, root=0)
         self.summary['host_memory_GB'] = list(host_memory_agg)
         self.output['host_cpu_count'] = psutil.cpu_count()
         cpu_count = np.zeros(self.MPI.nnodes())
         cpu_count_agg = np.zeros(self.MPI.nnodes())
         if self.MPI.local_rank()==0:
-            cpu_count[self.MPI.rank()//self.MPI.npernode()] = self.output['host_cpu_count']
+            cpu_count[self.MPI.node()] = self.output['host_cpu_count']
         self.MPI.comm().Reduce(cpu_count, cpu_count_agg, op=MPI.SUM, root=0)   
 
         self.summary['host_cpu_count'] = [int(d) for d in cpu_count_agg]
@@ -132,7 +130,7 @@ class StatsCounter(object):
             if self.MPI.rank() == 0 and self.args.do_train: 
                 self.logger.warning("The amount of dataset is smaller than the host memory; data might be cached after the first epoch. Increase the size of dataset to eliminate the caching effect!!!")
         potential_caching = []
-        for i in range(self.MPI.size()//self.MPI.npernode()):
+        for i in range(self.MPI.nnodes()):
             if self.summary['host_memory_GB'][i]  <= self.summary['data_size_per_host_GB']:
                 potential_caching.append(0)
             else:
@@ -313,8 +311,8 @@ class StatsCounter(object):
         self.start_timestamp = time()
         self.output[epoch]['load'][f'block{block}'] = []
         self.output[epoch]['proc'][f'block{block}'] = []
-        self.output[epoch]['throughput'][f'block{block}'] = []
-        self.output[epoch]['au'][f'block{block}'] = []
+        self.output[epoch]['throughput'][f'block{block}'] = 0.0
+        self.output[epoch]['au'][f'block{block}'] = 0.0
         self.output[epoch]['compute'][f'block{block}'] = []
         ts = utcnow()
         self.per_epoch_stats[epoch][f'block{block}'] = {
