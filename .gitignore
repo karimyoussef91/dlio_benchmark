@@ -158,3 +158,6 @@ dmypy.json
 /.idea/
 /venv-quartz/
 venv-openmpi
+
+# WORM-Cache per-run configs
+debug.conf
