@@ -6,9 +6,9 @@ module load StdEnv  gcc/13.3.1 mvapich2/2.3.7
 
 source /p/lustre1/youssef2/dlio_bench_venv/bin/activate
 
-export num_samples=320
+export num_samples=10240
 
-srun -n 16 -c 1 dlio_benchmark workload=unet3d_h100 \
+srun -n 4096 -c 1 dlio_benchmark workload=unet3d_h100 \
 ++workload.workflow.generate_data=True \
 ++workload.workflow.train=False \
 workload.dataset.data_folder=/p/lustre3/youssef2/dlio_data/unet3d_baseline_${num_samples}/ \

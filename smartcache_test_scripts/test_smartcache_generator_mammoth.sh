@@ -3,18 +3,19 @@
 module --force purge
 module load StdEnv  gcc/13.3.1 mvapich2/2.3.7
 
-source /p/lustre1/youssef2/dlio_bench_venv/bin/activate
+source /usr/workspace/youssef2/dlio_generator/bin/activate
 
 # Default values for environment variables
-num_samples=20
+num_samples=10240
 uv_threadpool_size=1
-smartcache_block_size=$((2*1024*1024))
+smartcache_block_size=$((140*1024*1024))
 smartcache_ranks_per_node=1
 application_ranks_per_node=16
 num_blocks=1024
-pfs_blocks_path=/p/lustre3/youssef2/smartcache_blocks_${num_samples}
+pfs_blocks_path=/p/lustre3/youssef2/smartcache_blocks_${num_samples}_140M
 smartcache_base_path=/l/ssd/smartcache_dir/
-smartcache_bin_dir=/p/vast1/youssef2/smartcache/build_mammoth/bin
+smartcache_bin_dir=/usr/workspace/youssef2/smartcache/build_test/bin
+run_config_dir=$(pwd)
 shuffle=0
 slurm=true
 
@@ -118,10 +119,25 @@ echo "ranks: ${ranks}"
 
 # ${run_prefix} -N ${nnodes} rm -rf ${smartcache_base_path}
 # mpirun -np ${ranks} --map-by slot:PE=${uv_threadpool_size} --bind-to core -host ${hosts} -x DFTRACER_ENABLE -x DFTRACER_DISABLE_IO -x DFTRACER_INC_METADATA -x UV_THREADPOOL_SIZE ${smartcache_bin_dir}/smartcache_service -b ${smartcache_base_path} -s ${smartcache_block_size} &
+export SMARTCACHE_RUN_CONFIG="run_config.json"
 
-${run_prefix} -n ${ranks} -c 1 ${smartcache_bin_dir}/smartcache_service -b ${smartcache_base_path} -p ${pfs_blocks_path} -s ${smartcache_block_size} &
+${run_prefix} -n ${ranks} -c 1 \
+${smartcache_bin_dir}/smartcache_service \
+--blocks-dir-path ${smartcache_base_path} \
+--pfs-dir-path ${pfs_blocks_path} \
+--block-size ${smartcache_block_size} \
+--run-conf-path ${run_config_dir} \
+--run-conf-filename ${SMARTCACHE_RUN_CONFIG} \
+--request-buffer-prealloc-size 20480 \
+--data-buffer-prealloc-size 64 \
+--initial-recvs 64 \
+--max-send-request 8 \
+--max-recv-request 64 \
+--max-send-data 64 \
+--max-recv-data 64 &
 smartcache_pid=$!
-sleep 60 # Wait for SmartCache to start
+sleep 30 # Wait for SmartCache to start
+# kill ${smartcache_pid}
 
 # ${run_prefix} -N ${nnodes} ls ${smartcache_base_path}
 # ${run_prefix} -N ${nnodes} ls /tmp
@@ -133,10 +149,10 @@ sleep 60 # Wait for SmartCache to start
 
 
 echo "Generating Data..."
-srun -n 32 -c 1 dlio_benchmark workload=unet3d_h100 \
+srun -n 512 -c 1 dlio_benchmark workload=unet3d_h100 \
 ++workload.workflow.generate_data=True \
 ++workload.workflow.train=False \
-workload.dataset.data_folder=/p/lustre3/youssef2/dlio_data/unet3d_smartcache_${num_samples}/ \
+workload.dataset.data_folder=/p/lustre3/youssef2/dlio_data/unet3d_smartcache_${num_samples}_140M/ \
 workload.dataset.format=indexed_binary_smartcache \
 workload.dataset.num_samples_per_file=1 \
 workload.dataset.num_files_train=${num_samples} \
