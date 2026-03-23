@@ -4,7 +4,7 @@ import json
 import socket
 host=socket.gethostname()
 host = re.findall("[a-zA-Z]+", host)[0]
-queue="pdebug"
+queue="pbatch"
 # if host == "elcap":
 #     queue="rabbit"
 # elif host == "tuolumne":

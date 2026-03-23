@@ -146,11 +146,15 @@ source /p/lustre5/youssef2/dlio_bench_venv/bin/activate
 # flux run -N 2 -n 2 python remove_local_smartcache_blocks.py /l/ssd/smartcache_dir/
 
 # export FI_OFI_RXM_EAGER_SIZE=$((2*1024*1024))
-export FI_LOG_LEVEL=debug
-export FI_PROVIDER=cxi   # or psm2, gni, etc., depending on your hardware
+# export FI_LOG_LEVEL=debug
+# export FI_PROVIDER=cxi   # or psm2, gni, etc., depending on your hardware
 
-export FI_CXI_DEFAULT_TX_SIZE=$((32*1024))
-export MPICH_OFI_MAX_RMA_TRANSACTIONS=512
+# export FI_CXI_DEFAULT_TX_SIZE=$((32*1024))
+# export MPICH_OFI_MAX_RMA_TRANSACTIONS=512
+
+
+export PTL_TIMEOUT=60                 # Timeout in seconds
+export PTL_MAX_RETRIES=100            # Maximum number of retries
 
 proc_per_node=4
 read_threads=4

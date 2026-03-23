@@ -156,4 +156,11 @@ dmypy.json
 #Apple system files
 .DS_Store
 /.idea/
+
+/venv-quartz/
+venv-openmpi
 *venv*
+
+# WORM-Cache per-run configs
+debug.conf
+
