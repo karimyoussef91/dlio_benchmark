@@ -604,30 +604,27 @@ class ConfigArguments:
         end_sample = 0
         samples_sum = 0
         if num_files > 0:
-            end_sample = total_samples - 1
-            samples_per_proc = int(math.ceil(total_samples/self.comm_size)) 
-            start_sample = self.my_rank * samples_per_proc
-            end_sample = (self.my_rank + 1) * samples_per_proc - 1
-            if end_sample > total_samples - 1:
-                end_sample = total_samples - 1
-            self.logger.debug(f"my_rank: {self.my_rank}, start_sample: {start_sample}, end_sample: {end_sample}")
-            sample_list = np.arange(start_sample, end_sample + 1)
+            sample_list = np.arange(start_sample, total_samples)
             if self.sample_shuffle is not Shuffle.OFF:
+                # print("sample shuffle ON")
                 if self.seed_change_epoch:
+                    # print("seed change epoch shuffle ON")
                     np.random.seed(self.seed + epoch_number)
                 else:
+                    # print("seed change epoch shuffle OFF")
                     np.random.seed(self.seed)
                 np.random.shuffle(sample_list)
-            for sample_index in range(end_sample - start_sample + 1):
-                global_sample_index = sample_list[sample_index]
+            samples_per_proc = int(math.ceil(total_samples/self.comm_size)) 
+            my_rank_samples=sample_list[self.my_rank*samples_per_proc:(self.my_rank+1)*samples_per_proc]
+            for sample_index in range(len(my_rank_samples)):
+                global_sample_index = my_rank_samples[sample_index]
+                global_sample_shard_index = self.my_rank*samples_per_proc + sample_index
                 samples_sum += global_sample_index
                 file_index = int(math.floor(global_sample_index/self.num_samples_per_file))
-                if self.storage_type == StorageType.LOCAL_FS:
-                    abs_path = os.path.abspath(file_list[file_index])
-                else:
-                    abs_path = file_list[file_index]
+                abs_path = os.path.abspath(file_list[file_index])
                 sample_index = global_sample_index % self.num_samples_per_file
-                process_thread_file_map[global_sample_index] = (abs_path, sample_index)
+                process_thread_file_map[global_sample_shard_index] = (abs_path, sample_index)
+                print(f"rank {self.my_rank} global_sample_index {global_sample_index} file_index {file_index} abs_path {abs_path} sample_index {sample_index}")
         return process_thread_file_map, samples_sum
 
     @dlp.log
