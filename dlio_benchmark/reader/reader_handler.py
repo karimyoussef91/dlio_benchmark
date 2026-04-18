@@ -112,7 +112,8 @@ class FormatReader(ABC):
         if self._args.read_type is ReadType.ON_DEMAND or filename not in self.open_file_map or self.open_file_map[filename] is None:
             self.open_file_map[filename] = self.open(filename)
         self.get_sample(filename, sample_index)
-        self.preprocess()
+        if not self.is_preprocessed():
+            self.preprocess()
         if self._args.read_type is ReadType.ON_DEMAND:
             self.close(filename)
             self.open_file_map[filename] = None
@@ -144,4 +145,8 @@ class FormatReader(ABC):
 
     @abstractmethod
     def is_iterator_based(self):
+        return False
+
+    @abstractmethod
+    def is_preprocessed(self):
         return False
