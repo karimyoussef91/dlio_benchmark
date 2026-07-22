@@ -37,7 +37,7 @@ class TorchDataset(Dataset):
     """
 
     @dlp.log_init
-    def __init__(self, format_type, dataset_type, epoch, num_samples, num_workers, batch_size):
+    def __init__(self, format_type, dataset_type, epoch, num_samples, num_workers, batch_size, global_index_map):
         self.format_type = format_type
         self.dataset_type = dataset_type
         self.epoch_number = epoch
@@ -45,6 +45,7 @@ class TorchDataset(Dataset):
         self.reader = None
         self.num_images_read = 0
         self.batch_size = batch_size
+        self.global_index_map = global_index_map
         args = ConfigArguments.get_instance()
         self.serial_args = pickle.dumps(args)
         self.logger = args.logger
@@ -54,10 +55,13 @@ class TorchDataset(Dataset):
 
     @dlp.log
     def worker_init(self, worker_id):
-        pickle.loads(self.serial_args)
-        _args = ConfigArguments.get_instance()
+        if worker_id == -1:
+            _args = ConfigArguments.get_instance()
+        else:
+            _args = pickle.loads(self.serial_args)
         _args.configure_dlio_logging(is_child=True)
         self.dlp_logger = _args.configure_dftracer(is_child=True, use_pid=True)
+        self.logger = _args.logger
         self.logger.debug(f"{utcnow()} worker initialized {worker_id} with format {self.format_type}")
         self.reader = ReaderFactory.get_reader(type=self.format_type,
                                                dataset_type=self.dataset_type,
@@ -78,6 +82,7 @@ class TorchDataset(Dataset):
         self.logger.debug(f"{utcnow()} Rank {DLIOMPI.get_instance().rank()} reading {image_idx} sample")
         dlp.update(step=step)
         dft_ai.update(step=step)
+        self.reader.global_index_map = self.global_index_map
         return self.reader.read_index(image_idx, step)
 
 
@@ -110,8 +115,13 @@ class TorchDataLoader(BaseDataLoader):
 
     @dlp.log
     def read(self):
+        self._args = ConfigArguments.get_instance()
+        self.logger = self._args.logger
+        self.num_samples = self._args.total_samples_train if self.dataset_type is DatasetType.TRAIN else self._args.total_samples_eval
+        self.batch_size = self._args.batch_size if self.dataset_type is DatasetType.TRAIN else self._args.batch_size_eval
+        global_index_map = self._args.train_global_index_map if self.dataset_type is DatasetType.TRAIN else self._args.val_global_index_map
         dataset = TorchDataset(self.format_type, self.dataset_type, self.epoch_number, self.num_samples,
-                               self._args.read_threads, self.batch_size)
+                               self._args.read_threads, self.batch_size, global_index_map)
         sampler = dlio_sampler(self._args.my_rank, self._args.comm_size, self.num_samples, self._args.epochs)
         if self._args.read_threads >= 1:
             prefetch_factor = math.ceil(self._args.prefetch_size / self._args.read_threads)

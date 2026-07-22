@@ -104,11 +104,6 @@ class FormatReader(ABC):
     @abstractmethod
     @dft_ai.data.item
     def read_index(self, global_sample_idx, step):
-        # temp update of shuffled global index map
-        self.global_index_map = self._args.train_global_index_map
-        self.file_map = self._args.train_file_map
-       
-
         self.step = step
         self.image_idx = global_sample_idx
         self.logger.debug(f"{self.global_index_map}")
